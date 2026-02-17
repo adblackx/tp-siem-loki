@@ -21,14 +21,46 @@ Avant de créer des graphiques, Grafana doit savoir où chercher les logs.
 
 ### 2. Créer un Dashboard "SOC"
 
-Un Dashboard est une collection de panneaux (Panels).
+Un Dashboard est une collection de panneaux (Panels). Pour ce TP, nous allons créer trois visualisations distinctes pour surveiller les différentes phases de l'attaque.
 
 1. Allez dans **Dashboards** > **New** > **New Dashboard**.
 2. Cliquez sur **Add Visualization**. Sélectionnez **Loki**.
 3. **Le sélecteur de logs :** En bas, passez en mode **Code** (au lieu de Builder).
-4. Saisissez votre requête LogQL : `{container="web_server"} | json | status="404"`.
+4. Saisissez votre requête LogQL : `sum(count_over_time({container="web_server"} | json | status="404" [1m]))`.
 5. **Type de vue :** Dans le menu de droite, changez "Time series" par "Bar Gauge" ou "Stat" pour varier les plaisirs.
 6. Donnez un titre (ex: "Détection Fuzzing Web") et cliquez sur **Apply**.
+
+
+#### 📊 Panneau A : Tentatives de Force Brute (SSH)
+
+* **Requête LogQL :** 
+```logql
+count_over_time({container="victim_server"} |= "Failed password" [1m])
+```
+* **Titre du Panel :** `🚨 Auth Security: SSH Brute Force Attempts`
+* **Type de vue :** **Time series** (pour voir l'évolution des pics dans le temps).
+* **Couleur :** Rouge (dans les options *Graph styles* > *Line color*).
+
+#### 📊 Panneau B : Reconnaissance & Fuzzing (Web 404)
+
+* **Requête LogQL :** 
+```logql
+sum(count_over_time({container="web_server"} | json | status="404" [1m]))
+```
+* **Titre du Panel :** `🔍 Web Security: Directory Discovery (Fuzzing)`
+* **Type de vue :** **Bar Gauge** (pour visualiser l'intensité de l'attaque sous forme de jauge).
+* **Seuils (Thresholds) :** Configure le jaune à partir de 10 et le rouge à partir de 30.
+
+#### 📊 Panneau C : Détection de Scanner (Nmap)
+
+* **Requête LogQL :** 
+```logql
+sum(count_over_time({container="web_server"} | json | http_user_agent =~ ".*Nmap.*" [1m]))
+```
+* **Titre du Panel :** `🤖 Threat Intel: Nmap Scanner Signature Detected`
+* **Type de vue :** **Stat** (affiche un gros chiffre impactant).
+* **Color mode :** Sélectionne "Background" pour que tout le carré devienne bleu ou rouge dès qu'un scan est détecté.
+
 
 ### 3. Configurer les Alertes (Le cerveau du SIEM)
 
