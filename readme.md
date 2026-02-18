@@ -1,119 +1,237 @@
-Voici un fichier **README.md** complet et structuré, conçu pour documenter votre TP. Il récapitule l'architecture, la configuration et les méthodologies de détection que nous avons mises en place.
+# 🛡️ TP : Opérations SOC & Cyberdéfense Active
+
+Bienvenue dans le SOC (**Security Operations Center**).
+Votre mission : Construire un outil de surveillance (SIEM), détecter des attaques en temps réel, analyser les preuves réseaux, et neutraliser les menaces.
+
+## 🏗️ L'Architecture du Lab
+
+Nous utilisons une architecture moderne et légère ("Cloud Native") :
+
+* **La Cible (Zone DMZ)** : Un serveur Web Nginx et un serveur SSH.
+* **L'Attaquant** : Un conteneur Kali Linux qui lance des attaques cycliques (Bruteforce, SQLi, DoS, Scan).
+* **Le SIEM (Surveillance)** :
+* **Promtail** : L'agent qui lit les logs.
+* **Loki** : La base de données de logs.
+* **Grafana** : L'interface visuelle (Tableaux de bord & Alertes).
+
+
+* **Le Poste Analyste** : **Jupyter** (Python) pour l'investigation avancée et la riposte.
 
 ---
 
-# TP : Conception d'un SIEM Lightweight (Loki / Grafana / Jupyter)
+## 🚀 Démarrage Rapide
 
-## 📋 Présentation
+### 1. Lancer l'infrastructure
 
-Ce TP a pour objectif de concevoir un système de gestion des événements et des informations de sécurité (**SIEM**) léger et moderne. Contrairement aux solutions lourdes basées sur Elasticsearch (ELK), nous utilisons ici la stack **PLG** (Promtail, Loki, Grafana) pour monitorer des conteneurs Docker en temps réel.
+Ouvrez votre terminal dans le dossier du projet et lancez :
 
-## 🏗️ Architecture Technique
-
-L'infrastructure est entièrement conteneurisée et orchestrée via `docker-compose`.
-
-* **Victimes :** * `web_server` (Nginx) : Configuré pour générer des logs au format **JSON** pour une analyse structurée.
-* `victim_server` (Alpine SSH) : Serveur Linux standard simulant une cible d'attaque par force brute.
-
-
-* **Collecte & Stockage :**
-* **Promtail** : Agent qui "aspire" les logs du socket Docker (`/var/run/docker.sock`).
-* **Loki** : Base de données optimisée pour le stockage des logs (le "cerveau").
-
-
-* **Analyse & Visualisation :**
-* **Grafana** : Interface de visualisation (Dashboards) et moteur d'alerting.
-* **JupyterHub** : Interface de programmation Python pour le *Threat Hunting* automatisé.
-
-
-* **Attaquant :**
-* `attacker_bot` (Kali Linux) : Génère des attaques cycliques (Hydra pour le SSH, Curl pour le Fuzzing Web, Nmap pour le scan réseau).
-
-
-
----
-
-## 🛠️ Configuration des Services
-
-### Logging JSON (Nginx)
-
-Pour faciliter la détection, nous avons surchargé la configuration par défaut de Nginx pour produire des logs structurés. Cela permet d'extraire directement des champs comme `status` ou `http_user_agent` sans utiliser de RegEx complexes.
-
-```nginx
-log_format json_analytics escape=json '{'
-    '"status": "$status", '
-    '"http_user_agent": "$http_user_agent", '
-    '"request_uri": "$request_uri"'
-'}';
+```bash
+docker compose up -d
 
 ```
 
-### Automatisation de l'Attaque
+### 2. Accéder aux Outils
 
-L'attaquant utilise des variables Bash (`$$i` dans Docker Compose) pour simuler un comportement agressif en continu :
+Une fois les conteneurs lancés (attendre ~30 secondes), ouvrez votre navigateur :
 
-* **SSH** : Tentatives de connexion root en boucle.
-* **Web** : Requêtes sur des pages inexistantes (404).
-* **Reconnaissance** : Injection de signatures Nmap dans les headers HTTP.
+| Outil | URL | Identifiants | Usage |
+| --- | --- | --- | --- |
+| **Grafana** | `http://localhost:3000` | User: `admin` <br>
+
+<br> Pass: `admin` | Visualisation & Alertes |
+| **Jupyter** | `http://localhost:8888` | Token: `securetoken123` | Analyse de code & Riposte |
 
 ---
 
-## 🔍 Méthodes d'Analyse (LogQL)
+## 📘 Guide de Configuration Grafana (Pas à pas)
 
-Dans Grafana, nous avons implémenté trois niveaux de détection utilisant le langage **LogQL** :
+Grafana est vide au démarrage. Vous devez le configurer pour voir les attaques. Suivez ce guide méticuleusement.
 
-### 1. Détection de Bruteforce SSH (Analyse Textuelle)
+### Étape 1 : Connecter la Source de Données (Loki)
 
-On compte les échecs de mot de passe sur le serveur de la victime :
+Grafana a besoin de savoir où sont stockés les logs.
 
+1. Connectez-vous à Grafana (`admin` / `admin`). Passez l'écran de changement de mot de passe (cliquez sur "Skip").
+2. Dans le menu de gauche, allez sur **Connections** (l'icône de prise) > **Data Sources**.
+3. Cliquez sur le bouton bleu **+ Add new data source**.
+4. Cherchez et sélectionnez **Loki**.
+5. **Configuration Critique :**
+* Dans le champ **URL**, saisissez exactement : `http://loki:3100`
+* *Pourquoi ?* `loki` est le nom du conteneur dans le réseau Docker interne.
+
+
+6. Descendez tout en bas et cliquez sur **Save & Test**.
+* ✅ *Succès :* Un bandeau vert "Data source successfully connected" apparaît.
+
+
+
+### Étape 2 : Comprendre l'interface "Explore" vs "Dashboard"
+
+* **Explore (La Boussole) :** C'est votre bac à sable. Cliquez sur l'icône "Explore" à gauche. Sélectionnez "Loki" en haut. C'est ici qu'on tape des requêtes manuelles pour chercher une preuve précise.
+* **Dashboard (Le Tableau de Bord) :** C'est ici qu'on fige les graphiques pour la surveillance continue.
+
+### Étape 3 : Créer le Dashboard "SOC Overview"
+
+Nous allons créer 3 panneaux pour détecter 3 types d'attaques.
+
+1. Allez dans **Dashboards** (menu gauche) > **New Dashboard** > **+ Add visualization**.
+2. Sélectionnez **Loki** comme source.
+3. En bas de l'écran, passez l'éditeur en mode **Code** (cliquez sur le bouton `Builder` pour qu'il devienne `Code`).
+
+#### 📊 Panneau A : Détection Bruteforce SSH
+
+L'attaquant essaie de deviner le mot de passe root.
+
+* **Requête LogQL :** Copiez ceci dans la zone de code :
 ```logql
 count_over_time({container="victim_server"} |= "Failed password" [1m])
 
 ```
 
-### 2. Détection de Fuzzing Web (Analyse JSON)
 
-On utilise le parser JSON pour identifier les pics d'erreurs 404 :
+* **Configuration Visuelle (à droite) :**
+* **Title :** `🚨 SSH Bruteforce`
+* **Graph styles > Line color :** Mettez du Rouge.
+* **Graph styles > Fill opacity :** 50%.
 
+
+* Cliquez sur **Apply** (en haut à droite).
+
+#### 📊 Panneau B : Détection Fuzzing Web (404)
+
+L'attaquant cherche des pages cachées (`admin.php`, `backup.sql`), générant des erreurs 404.
+
+* Cliquez sur l'icône **Add Panel** (en haut du dashboard).
+* **Requête LogQL :**
 ```logql
 sum(count_over_time({container="web_server"} | json | status="404" [1m]))
 
 ```
 
-### 3. Détection de Scanner Nmap (Signature Based)
 
-On recherche la signature spécifique de l'outil Nmap dans les User-Agents :
+*Note : On utilise `| json` car Nginx est configuré pour envoyer des logs structurés.*
+* **Configuration Visuelle :**
+* **Title :** `🔍 Web Fuzzing (404 Errors)`
+* **Visualisation (en haut à droite) :** Changez "Time series" par **Bar gauge**.
+* **Thresholds (Seuils) :** Réglez le rouge à partir de **20**.
 
+
+* Cliquez sur **Apply**.
+
+#### 📊 Panneau C : Détection de Scanner (Signature Nmap)
+
+L'attaquant utilise l'outil Nmap, qui laisse sa signature dans le "User-Agent".
+
+* Ajoutez un nouveau panneau.
+* **Requête LogQL :**
 ```logql
 sum(count_over_time({container="web_server"} | json | http_user_agent =~ ".*Nmap.*" [1m]))
 
 ```
 
----
 
-## 🚦 Monitoring vs Alerting
+* **Configuration Visuelle :**
+* **Title :** `🤖 Nmap Scan Detected`
+* **Visualisation :** Changez pour **Stat**.
+* **Color mode :** Choisissez "Background".
 
-C'est le cœur du métier d'analyste SOC (Security Operations Center) :
 
-* **Explore** : Utilisé pour l'investigation manuelle (chercher un log spécifique suite à un incident).
-* **Dashboard** : Utilisé pour la surveillance visuelle des tendances.
-* **Alerting** : Utilise les requêtes LogQL pour déclencher une notification automatique.
+* Cliquez sur **Apply**, puis sur l'icône **Save** (disquette) pour sauvegarder votre Dashboard.
 
-> **Exemple de règle d'alerte :** Si `status="404"` > 20 sur une période de 1 minute, l'alerte passe en état **Firing** (Rouge), signalant une attaque de découverte de répertoire.
 
----
-
-## 🚀 Utilisation
-
-1. Lancer l'infrastructure : `docker compose up -d`
-2. Accéder à Grafana : `http://localhost:3000` (admin/admin)
-3. Accéder à Jupyter : `http://localhost:8888` (token: securetoken123)
-4. Observer les pics d'attaques sur le Dashboard "SOC Overview".
 
 ---
 
-**TP réalisé dans le cadre d'une initiation à la Cybersécurité Cloud-Native.**
+
+
+
+
+### Étape 4. Configurer les Alertes (Le cerveau du SIEM)
+
+C'est ici que l'on passe de la simple vue à la surveillance active.
+
+1. Dans l'édition d'un panneau, allez dans l'onglet **Alert**.
+2. Cliquez sur **Create alert rule from this panel**.
+3. **Condition :** Réglez le seuil. Par exemple : `IS ABOVE 15`.
+4. **Notifications :** Allez dans **Alerting** > **Contact points** pour lier Grafana à un webhook (Discord, Slack, ou même un script Python personnalisé).
+
+
+
+## 🕵️‍♂️ Vos Missions
+
+Maintenant que le SIEM est prêt, vous êtes l'analyste en poste.
+
+### Mission 1 : Analyse de Logs (Threat Hunting)
+
+*Outil : Jupyter Notebook `SOC_Analyst_Training.ipynb*`
+
+1. Ouvrez le Notebook dans Jupyter.
+2. Exécutez la **Cellule 2**.
+3. **Objectif :** Trouvez l'adresse IP exacte de l'attaquant qui effectue des injections SQL (`' OR 1=1`). Le SIEM (Grafana) vous dit *quand* ça arrive, Jupyter vous dit *qui* et *comment*.
+
+### Mission 2 : Analyse Réseau (Forensics)
+
+*Outil : Terminal & Jupyter (Scapy)*
+
+Certaines attaques (comme le Déni de Service "Slowloris") sont peu visibles dans les logs.
+
+1. Dans un terminal, vérifiez que l'attaquant est actif :
+```bash
+docker logs -f attacker_bot
+# Attendez de voir : [PHASE 3] Slowloris DoS... ou [PHASE 4] Nmap Scan...
+
+```
+
+
+2. Lancez la capture sur la victime :
+```bash
+#docker exec -it web_server tcpdump -i any -n -w /tmp/evidence/capture.pcap
+docker exec -it web_server tcpdump -i any -w /tmp/evidence/capture.pcap
+
+```
+
+3. **Laissez tourner pendant 30 secondes** (pour capturer un cycle d'attaque complet).
+4. Arrêtez la capture avec `CTRL + C`.
+5. Retournez dans Jupyter (Cellule 3). Le fichier `.pcap` est automatiquement partagé.
+6. Ouvrez le Notebook Jupyter pour analyser le fichier `.pcap`.
+7. Exécutez l'analyse Scapy. Vous devriez voir un **SYN Flood** (beaucoup de demandes de connexion incomplètes).
+* *Vérification :* Vous devez voir le message `X packets captured` (où X > 0).
+
+
+
+
+### Mission 3 : Défense Active (La Riposte)
+
+*Outil : Jupyter (Active Response)*
+
+Il est temps de stopper l'attaque.
+
+1. Dans Jupyter (Cellule 4), utilisez le script Python fourni pour interagir avec le Pare-feu (Iptables) de la victime.
+2. Bloquez l'IP de l'attaquant.
+```python
+block_ip_firewall("172.xx.0.xx") # Remplacez par l'IP trouvée en Mission 1
+
+```
+
+
+3. Retournez sur **Grafana** : Vérifiez que toutes les courbes retombent à zéro. C'est la preuve de votre succès.
 
 ---
 
-Souhaites-tu que j'ajoute une section spécifique sur le code Python que nous avons écrit dans Jupyter pour le calcul des seuils ?
+## 📚 Annexe Technique
+
+### Pourquoi ces requêtes LogQL ?
+
+* `{container="..."}` : Filtre les logs par source.
+* `|= "texte"` : Cherche si la ligne contient le texte exact (Recherche simple).
+* `| json` : Transforme la ligne de log en objet manipulable (permet de filtrer par `status` ou `user_agent`).
+* `[1m]` : Calcule le débit par minute.
+
+### L'Attaquant
+
+Le conteneur `attacker` exécute un script cyclique :
+
+1. **Reconnaissance :** Nmap.
+2. **Web :** Injection SQL & Path Traversal.
+3. **DoS :** Slowloris.
+4. **Bruteforce :** Hydra (SSH).
