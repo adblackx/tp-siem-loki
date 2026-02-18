@@ -1,7 +1,7 @@
 # 🛡️ TP : Opérations SOC & Cyberdéfense Active
 
 Bienvenue dans le SOC (**Security Operations Center**).
-Votre mission : Construire un outil de surveillance (SIEM), détecter des attaques en temps réel, analyser les preuves réseaux, et neutraliser les menaces.
+Votre Module : Construire un outil de surveillance (SIEM), détecter des attaques en temps réel, analyser les preuves réseaux, et neutraliser les menaces.
 
 ## 🏗️ L'Architecture du Lab
 
@@ -157,19 +157,31 @@ C'est ici que l'on passe de la simple vue à la surveillance active.
 
 
 
-## 🕵️‍♂️ Vos Missions
+## 🕵️‍♂️ Vos Modules
 
 Maintenant que le SIEM est prêt, vous êtes l'analyste en poste.
 
-### Mission 1 : Analyse de Logs (Threat Hunting)
+### Module 1 : Analyse de Logs (Threat Hunting)
 
-*Outil : Jupyter Notebook `SOC_Analyst_Training.ipynb*`
+*Outil : Jupyter Notebook `SOC_Analyst.ipynb*`
+
+Réponde aux questions
+
+### Module 2 : Analyse de Logs (Threat Hunting)
+
+*Outil : Jupyter Notebook `SOC_Analyst.ipynb*`
+
 
 1. Ouvrez le Notebook dans Jupyter.
 2. Exécutez la **Cellule 2**.
 3. **Objectif :** Trouvez l'adresse IP exacte de l'attaquant qui effectue des injections SQL (`' OR 1=1`). Le SIEM (Grafana) vous dit *quand* ça arrive, Jupyter vous dit *qui* et *comment*.
 
-### Mission 2 : Analyse Réseau (Forensics)
+### Module 3 : SIEM Engineering (Python & Pandas) :
+
+Vous allez appredre à utiliser pandas pour compter des attaques en python.
+
+
+### Module 4 : Analyse Réseau (Forensics)
 
 *Outil : Terminal & Jupyter (Scapy)*
 
@@ -200,7 +212,8 @@ docker exec -it web_server tcpdump -i any -w /tmp/evidence/capture.pcap
 
 
 
-### Mission 3 : Défense Active (La Riposte)
+
+### Module 5 : Défense Active (La Riposte)
 
 *Outil : Jupyter (Active Response)*
 
@@ -209,7 +222,7 @@ Il est temps de stopper l'attaque.
 1. Dans Jupyter (Cellule 4), utilisez le script Python fourni pour interagir avec le Pare-feu (Iptables) de la victime.
 2. Bloquez l'IP de l'attaquant.
 ```python
-block_ip_firewall("172.xx.0.xx") # Remplacez par l'IP trouvée en Mission 1
+block_ip_firewall("172.xx.0.xx") # Remplacez par l'IP trouvée en Module 1
 
 ```
 
